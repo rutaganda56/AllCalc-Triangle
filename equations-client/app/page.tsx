@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import { SiteHeader } from "./components/site-header";
+import { useAuth } from "./components/auth-provider";
+import { formatCalculationText, formatNumber, formatPoint } from "./lib/format";
 
 type Point = { x: number; y: number };
 type LineEquation = {
@@ -71,16 +74,6 @@ const equationForms: { label: string; key: keyof LineEquation }[] = [
   { label: "Polar", key: "polar" },
   { label: "Intercept", key: "interceptForm" },
 ];
-
-const numberFormat = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
-
-function formatNumber(value: number) {
-  return numberFormat.format(value);
-}
-
-function formatPoint(point: Point) {
-  return `(${formatNumber(point.x)}, ${formatNumber(point.y)})`;
-}
 
 function TrianglePlot({ data }: { data: CalculationResponse }) {
   const width = 440;
@@ -183,18 +176,27 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function Home() {
+  const { session } = useAuth();
   const [coordinates, setCoordinates] = useState<Coordinates>(initialCoordinates);
   const [result, setResult] = useState<CalculationResponse | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   function updateCoordinate(key: CoordinateKey, value: string) {
     setCoordinates((current) => ({ ...current, [key]: value }));
+    setResult(null);
+    setSavedMessage("");
+    setSaveError("");
   }
 
   async function calculate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setSavedMessage("");
+    setSaveError("");
 
     const values = Object.entries(coordinates) as [CoordinateKey, string][];
     const invalidCoordinate = values.find(([, value]) => {
@@ -251,23 +253,52 @@ export default function Home() {
     }
   }
 
+  async function saveToHistory() {
+    if (!session) return;
+    setIsSaving(true);
+    setSaveError("");
+    setSavedMessage("");
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8081";
+      const response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/v1/history`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          x1: Number(coordinates.x1),
+          y1: Number(coordinates.y1),
+          x2: Number(coordinates.x2),
+          y2: Number(coordinates.y2),
+          x3: Number(coordinates.x3),
+          y3: Number(coordinates.y3),
+        }),
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Your sign-in has expired. Please sign in again before saving.");
+        }
+        const apiError = (await response.json()) as ApiError;
+        throw new Error(apiError.message || `Could not save calculation (${response.status}).`);
+      }
+      setSavedMessage("Saved to your history.");
+    } catch (cause) {
+      setSaveError(
+        cause instanceof TypeError
+          ? "Unable to reach the history API. Check that it is running and configured."
+          : cause instanceof Error
+            ? cause.message
+            : "Could not save this calculation.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Triangulate home">
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" fill="none">
-              <path d="M16 4 29 27H3L16 4Z" stroke="currentColor" strokeWidth="2.5" />
-              <path d="m12 20 4-7 4 7" stroke="currentColor" strokeWidth="2" />
-            </svg>
-          </span>
-          <span>triangulate<span className="brand-period">.</span></span>
-        </Link>
-        <div className="topbar-note">
-          <span className="status-dot" />
-          <span>Geometry workspace</span>
-        </div>
-      </header>
+      <SiteHeader />
 
       <div className="page-content">
         <section className="intro">
@@ -311,6 +342,7 @@ export default function Home() {
                         min="-2147483648"
                         max="2147483647"
                         required
+                        disabled={isLoading}
                         value={coordinates[x]}
                         onChange={(event) => updateCoordinate(x, event.target.value)}
                       />
@@ -326,6 +358,7 @@ export default function Home() {
                         min="-2147483648"
                         max="2147483647"
                         required
+                        disabled={isLoading}
                         value={coordinates[y]}
                         onChange={(event) => updateCoordinate(y, event.target.value)}
                       />
@@ -527,58 +560,75 @@ export default function Home() {
               </article>
             </div>
 
-            <details className="advanced-details">
-              <summary>
-                <span>Equations &amp; working</span>
-                <span className="details-count">{result.steps.length} calculation steps</span>
-                <span className="details-chevron" aria-hidden="true">⌄</span>
-              </summary>
-              <div className="advanced-content">
-                <div className="equations-block">
-                  <h3>Circle equations</h3>
-                  <DetailRow label="Incircle" value={result.incircle.equation} />
-                  <DetailRow label="Circumcircle" value={result.circumcircle.equation} />
-                </div>
-                <div className="equations-block">
-                  <h3>Side, median, altitude &amp; bisector lines</h3>
-                  {Object.entries(result.lines.bySide).map(([side, equations]) => (
-                    <div className="line-equation-group" key={side}>
-                      <h4>{side}</h4>
-                      {(
-                        [
-                          ["Side", equations.side],
-                          ["Median", equations.median],
-                          ["Altitude", equations.altitude],
-                          ["Perpendicular bisector", equations.perpendicularBisector],
-                        ] as const
-                      ).map(([lineType, line]) => (
-                        <div className="equation-line" key={lineType}>
-                          <h5>{lineType}</h5>
-                          {equationForms.map(({ label, key }) => (
-                            <DetailRow key={key} label={label} value={line[key]} />
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <div className="equations-block">
-                  <h3>Calculation steps</h3>
-                  <ol className="steps-list">
-                    {result.steps.map((step, index) => (
-                      <li key={`${step.name}-${index}`}>
-                        <span className="step-number">{String(index + 1).padStart(2, "0")}</span>
-                        <div>
-                          <strong>{step.name}</strong>
-                          <p>{step.formula}</p>
-                          <code>{step.substitution} = {formatNumber(step.result)}</code>
-                        </div>
-                      </li>
+            {session ? (
+              <details className="advanced-details">
+                <summary>
+                  <span>Equations &amp; working</span>
+                  <span className="details-count">{result.steps.length} calculation steps</span>
+                  <span className="details-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div className="advanced-content">
+                  <div className="equations-block">
+                    <h3>Circle equations</h3>
+                    <DetailRow label="Incircle" value={formatCalculationText(result.incircle.equation)} />
+                    <DetailRow label="Circumcircle" value={formatCalculationText(result.circumcircle.equation)} />
+                  </div>
+                  <div className="equations-block">
+                    <h3>Side, median, altitude &amp; bisector lines</h3>
+                    {Object.entries(result.lines.bySide).map(([side, equations]) => (
+                      <div className="line-equation-group" key={side}>
+                        <h4>{side}</h4>
+                        {(
+                          [
+                            ["Side", equations.side],
+                            ["Median", equations.median],
+                            ["Altitude", equations.altitude],
+                            ["Perpendicular bisector", equations.perpendicularBisector],
+                          ] as const
+                        ).map(([lineType, line]) => (
+                          <div className="equation-line" key={lineType}>
+                            <h5>{lineType}</h5>
+                            {equationForms.map(({ label, key }) => (
+                              <DetailRow key={key} label={label} value={formatCalculationText(line[key])} />
+                            ))}
+                          </div>
+                        ))}
+                      </div>
                     ))}
-                  </ol>
+                  </div>
                 </div>
+              </details>
+            ) : (
+              <div className="advanced-details advanced-locked">
+                <p>
+                  <Link href="/login">Sign in</Link> to view equations and working in your saved history.
+                </p>
               </div>
-            </details>
+            )}
+            <div className="save-history-actions">
+              {session ? (
+                <>
+                  <button
+                    className="history-new-button"
+                    type="button"
+                    onClick={saveToHistory}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? "Saving…" : "Save to history"}
+                  </button>
+                  {savedMessage && (
+                    <p className="auth-success" role="status">
+                      {savedMessage} <Link href="/history">View history</Link>
+                    </p>
+                  )}
+                  {saveError && <p className="auth-error" role="alert">{saveError}</p>}
+                </>
+              ) : (
+                <p>
+                  <Link href="/login">Sign in</Link> to save this calculation to your history.
+                </p>
+              )}
+            </div>
           </section>
         ) : (
           <section className="how-it-works" aria-label="How it works">
@@ -593,7 +643,7 @@ export default function Home() {
       </div>
 
       <footer className="footer">
-        <span>triangulate<span className="brand-period">.</span></span>
+        <span>Trigly<span className="brand-period">.</span></span>
         <span>Thoughtful tools for curious minds.</span>
         <span>Made for the love of geometry <span aria-hidden="true">✳</span></span>
       </footer>

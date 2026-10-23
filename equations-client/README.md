@@ -1,8 +1,9 @@
-# Triangulate
+# Trigly
 
 A responsive triangle-calculator frontend built with Next.js. Enter three integer
 coordinate pairs to visualize a triangle and explore its sides, angles, area,
 perimeter, centers, circles, line equations, and calculation steps.
+Sign in to save calculations to a private history.
 
 ## Run locally
 
@@ -20,3 +21,5 @@ different API origin, set `NEXT_PUBLIC_API_URL` before starting or building the
 frontend.
 
 The API must allow the frontend origin through its CORS configuration.
+For Supabase account setup, Google OAuth configuration, and saved-history
+database settings, see the repository [README](../README.md#accounts-and-saved-history).

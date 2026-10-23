@@ -9,4 +9,4 @@ public class EquationsApiApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(EquationsApiApplication.class, args);
 	}
-}
+} 
