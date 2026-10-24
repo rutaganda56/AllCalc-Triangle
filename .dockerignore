@@ -1,0 +1,4 @@
+equations-client
+**/target
+**/node_modules
+.git
