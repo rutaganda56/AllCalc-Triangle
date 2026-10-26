@@ -303,10 +303,9 @@ export default function Home() {
       <div className="page-content">
         <section className="intro">
           <div className="eyebrow"><span /> PRECISION GEOMETRY, MADE CLEAR</div>
-          <h1>Every triangle has a story.</h1>
+          <h1>Triangle Geometry Solver</h1>
           <p>
-            Enter three points to uncover the measurements, properties, and equations
-            behind your triangle.
+            Enter three points to instantly unveil every measurement, geometric property, and equation behind your triangle
           </p>
         </section>
 
