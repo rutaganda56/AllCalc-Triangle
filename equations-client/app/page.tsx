@@ -383,7 +383,6 @@ export default function Home() {
                 ) : (
                   <>
                     Calculate triangle
-                    <span aria-hidden="true">↗</span>
                   </>
                 )}
               </button>
@@ -644,7 +643,7 @@ export default function Home() {
       <footer className="footer">
         <span>Trigly<span className="brand-period">.</span></span>
         <span>Thoughtful tools for curious minds.</span>
-        <span>Made for the love of geometry <span aria-hidden="true">✳</span></span>
+        <span>Made for the love of geometry</span>
       </footer>
     </main>
   );
